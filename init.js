@@ -1,15 +1,20 @@
+let game;
 const gamespeed = 10, fps = 60;
 
-const client = new Client('http://localhost:3000');
+function JoinPath(root, srcs) {
+    return srcs.map(e => root + e);
+}
 
 (function () {
-    let list = ['classes/attack-box', 'classes/Player', 'classes/Enemy', 'classes/OtherPlayer', 'scenes/Field1', 'scenes/Main'];
+    ChangeResolution(1280, 720);
 
-    LoadScripts(list).then(e => {
-        client.game = new Game(null, gamespeed, fps);
-        MainScene();
-        //Field1();
-    }).catch(e => {
-        console.error(e);
-    });
+    // 반드시 클래스 부터 로드 하기
+    // let list = ['js/scenes/main.js', 'js/scenes/sonagi.js'];
+
+    // LoadScripts(list).then(e => {
+    //     game = new Game(null, gamespeed, fps);
+    //     Main();
+    // }).catch(e => {
+    //     console.error(e);
+    // });
 })();
