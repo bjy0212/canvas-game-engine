@@ -2,10 +2,13 @@
 const canvas = document.querySelector('canvas'),
     ctx = canvas.getContext('2d');
 
+// 씬이 바뀔 때 비워지는 메모리
+let src = {};
+
 canvas.width = document.querySelector('.page').offsetWidth;
 canvas.height = document.querySelector('.page').offsetHeight;
 
-const width = canvas.width,
+let width = canvas.width,
     height = canvas.height;
 
 const settings = {
@@ -18,20 +21,70 @@ const settings = {
 
 let keydown = {}, mousedown = {};
 
+let resolution = {
+    w: canvas.width / canvas.offsetWidth,
+    h: canvas.height / canvas.offsetHeight
+}
+
+function Resize() {
+    let w = document.body.offsetWidth,
+        h = document.body.offsetHeight;
+
+    let page = document.querySelector('div.page'),
+        ui = document.querySelector('div.ui');
+
+    if (w * 9 > h * 16) {
+        page.style.width = h / 9 * 16 + 'px';
+        page.style.height = h + 'px';
+    } else {
+        page.style.width = w + 'px';
+        page.style.height = w / 16 * 9 + 'px';
+    }
+
+    document.body.style.fontSize = h / 40 + 'px';
+}
+
+function ChangeResolution(w, h) {
+    canvas.width = w;
+    canvas.height = h;
+
+    width = w;
+    height = h;
+
+    resolution = {
+        w: canvas.width / canvas.offsetWidth,
+        h: canvas.height / canvas.offsetHeight
+    }
+}
+
+Resize();
+window.onresize = Resize;
+
 window.onmousedown = e => {
+    if (e.target.className !== 'ui') return;
+
+    mousedown.down = e.button;
+
     mousedown[e.button] = {
-        x: e.screenX,
-        y: e.screenY
+        x: Math.floor((e.screenX - canvas.offsetLeft) * resolution.w) - (width / 2),
+        y: Math.floor((e.screenY - canvas.offsetTop) * resolution.h) - (height / 2)
     };
 };
 
-window.onmouseup = e => {
-    delete mousedown[e.button];
+window.oncontextmenu = e => {
+    e.preventDefault();
 }
+
+window.onmouseup = e => {
+    if (e.target.className !== 'ui') return;
+
+    mousedown.up = true;
+
+    delete mousedown[e.button];
+};
 
 window.onkeydown = e => {
     //e.preventDefault();
-
     let key = e.key.toLowerCase();
 
     if (keydown.alt && key === 'tab') keydown = {};
@@ -46,7 +99,6 @@ window.onblur = e => {
 
 window.onkeyup = e => {
     //e.preventDefault();
-
     let key = e.key.toLowerCase();
 
     keydown[key] = undefined;
@@ -70,6 +122,9 @@ function RotateAndRun(x, y, flip, flop, degrees, func) {
 
 function DrawImage(image, x, y, w, h, flip, flop, degrees) {
     RotateAndRun(x, y, flip, flop, degrees, function () {
+        ctx.shadowColor = "white";
+        ctx.shadowBlur = 0;
+
         ctx.drawImage(image, x - w / 2, y - h / 2, w, h);
     });
 }
@@ -250,6 +305,7 @@ class BoxCollider extends Collider {
     }
 }
 
+/**@class */
 class Sprite {
     constructor(srcs, width, height, speed = 1, repeat = true) {
         this.images = [];
@@ -290,8 +346,20 @@ class Sprite {
 }
 
 class GameObject {
+    /**@type {Sprite} */
     #sprite;
+
+    /**
+     * @constructor
+     * @param {String} name 
+     * @param {Number} x 
+     * @param {Number} y 
+     * @param {Sprite} sprite 
+     * @param {Collider} collider 
+     * @param {Scene} scene 
+     */
     constructor(name, x, y, sprite, collider, scene) {
+        this.z = 0;
         this.name = name;
         this.position = new Vector(x, y);
         this.rotation = 0;
@@ -315,6 +383,21 @@ class GameObject {
         this.#sprite.idx = 0;
     }
 
+    get clicked() {
+        return mousedown.down == 0 && mousedown[0] && this.IsObject(mousedown[0].x, mousedown[0].y);
+    }
+
+    get pressed() {
+        return mousedown[0] && this.IsObject(mousedown[0].x, mousedown[0].y)
+    }
+
+    get released() {
+        return mousedown.up == 0 && mousedown[0] && this.IsObject(mousedown[0].x, mousedown[0].y)
+    }
+
+    IsObject(x, y) {
+        return x >= this.position.x - (this.#sprite.width / 2) && x <= this.position.x + (this.#sprite.width / 2) && y >= this.position.y - (this.#sprite.height / 2) && y <= this.position.y + (this.#sprite.height / 2);
+    }
     Start() { }
     FixedUpdate() { }
     Update() { }
@@ -366,12 +449,19 @@ class Scene {
         });
 
         this.camera.FixedUpdate();
+
+        mousedown.down = false;
+        mousedown.up = false;
     }
 
     Render() {
         Clear();
 
-        Object.keys(this.objects).forEach(e => {
+        let list = Object.keys(this.objects);
+
+        list.sort((a, b) => this.objects[a].z - this.objects[b].z);
+
+        list.forEach(e => {
             this.objects[e].Update();
 
             if (!this.objects[e]) return;
@@ -390,10 +480,14 @@ class Scene {
                 && rep.y + spw >= - (height / 2)
                 && rep.y - spw <= (height / 2)) {
                 DrawImage(obj.sprite.sprite, rep.x + width / 2, rep.y + height / 2, obj.sprite.width, obj.sprite.height, obj.flip, obj.flop, obj.rotation);
+
+                if (obj.AfterRender) {
+                    obj.AfterRender();
+                }
             }
         });
 
-        let list = Object.keys(this.objects).filter(e => this.objects[e].collider);
+        list = Object.keys(this.objects).filter(e => this.objects[e].collider);
         for (let i = 0; i < list.length; i++) {
             for (let j = i + 1; j < list.length; j++) {
                 Collider.Collid(this.objects[list[i]], this.objects[list[j]]);
@@ -435,11 +529,11 @@ class Game {
         this.render = null;
         this.bgm = document.querySelector('audio');
 
-        if (!bgm || bgm === null) {
-            let ae = new HTMLAudioElement();
+        if (!this.bgm || this.bgm === null) {
+            let ae = document.createElement('audio');
             document.body.appendChild(ae);
 
-            bgm = ae;
+            this.bgm = ae;
         }
     }
 
@@ -485,20 +579,30 @@ function LoadScript(src) {
     return new Promise(function (resolve, reject) {
         var script = document.createElement('script');
         script.onload = function () {
+            document.getElementsByClassName(src).item(0).outerHTML = '';
             resolve();
         };
         script.onerror = function () {
             reject();
         };
         script.src = src;
+        script.className = src;
         document.body.appendChild(script);
     });
 }
 
-async function LoadScripts(srcs) {
-    for(e of srcs) {
+async function LoadScripts(srcs, unload) {
+    if (unload) Unload();
+
+    for (e of srcs) {
         if (!e.endsWith('.js')) e += '.js';
-        await LoadScript('scripts/' + e);
+        await LoadScript(e);
     }
+}
+
+function Unload() {
+    Object.keys(src).forEach(e => {
+        delete src[e];
+    });
 }
 //#endregion
